@@ -1,6 +1,71 @@
 # Sơ đồ tích hợp — TTC (ASC SCHOOL) ↔ LMS
 
-## Sơ đồ tổng quan (SSO + OpenSync)
+## Sơ đồ tổng quan (ASCII — đọc trực tiếp)
+
+```text
+            (SSO Authorization Code + OIDC)
+
+ [User HS/PH/GV]
+        |
+        | 1) Click "Đăng nhập với TTC"
+        v
+ [LMS FE (lms-fe / lms-school)]
+        |
+        | 2) Redirect TTC /oauth/authorize (response_type=code + state)
+        v
+ [TTC SSO (OIDC)]
+        |
+        | 3) Redirect callback ?code=...&state=...
+        v
+ [LMS SSO broker (lms-sso)]
+        |
+        | 4) POST TTC /api/oauth/token (grant_type=authorization_code)
+        v
+ [TTC SSO (OIDC)] --> 5) access_token (JWT: sub, user_type, [identity], exp, ...)
+        |
+        v
+ [LMS SSO broker (lms-sso)]
+        |
+        | 6) Resolve user (lookup by ttc_sub/sub; optionally by identity → SoDinhDanhCaNhan)
+        v
+ [LMS API (lms-api)] <------------------------------+
+        |                                           |
+        | 7) Read/Write mappings + session data      |
+        v                                           |
+ [LMS DB]                                           |
+        ^                                           |
+        |                                           |
+        +-------------------- 8) Set session cookie -+
+                              (user quay lại FE dùng LMS)
+
+
+            (OpenSync M2M Client Credentials)
+
+ [Cron/Job hoặc Admin trigger]
+        |
+        v
+ [LMS API (lms-api)]
+        |
+        | A) POST TTC /api/opensync/token (grant_type=client_credentials)
+        | B) GET  /opensync/thongtinnienhoc
+        | C) GET  /opensync/thongtinkhoilop?ma_truong
+        | D) GET  /opensync/thongtinlophoc?ma_truong&ma_nien
+        | E) GET  /opensync/thongtingiaovien?ma_truong
+        | F) GET  /opensync/thongtinhocsinh?ma_truong&ma_nien&page...
+        | G) GET  /opensync/phanconggiangday?ma_truong&ma_nien&SoDinhDanhCaNhan
+        v
+ [TTC OpenSync API]
+        |
+        | Upsert danh mục TTC → LMS (HS/GV/Lớp/Khối/Niên/Phân công)
+        v
+ [LMS DB]
+
+
+ Logout (RP-Initiated)
+ [User] -> [FE] -> TTC /oauth/endsession?id_token_hint=<access_token>&post_logout_redirect_uri=...
+```
+
+## Sơ đồ tổng quan (Mermaid — nếu bật preview)
 
 ```mermaid
 flowchart LR
