@@ -1,0 +1,429 @@
+{
+	"info": {
+		"_postman_id": "a8f3c1e0-1b2d-4d3a-9f1e-7e8c1c0f3a01",
+		"name": "OpenSync API - ASC SCHOOL (Đối tác)",
+		"description": "Bộ collection theo tài liệu **HuongDan_OpenSyncAPI_DoiTac**.\n\nLuồng sử dụng:\n1. Set các biến trong Environment: `Base_URL`, `client_id`, `client_secret`, `ma_truong`, `ma_nien`, `SoDinhDanhCaNhan`.\n2. Chạy request **Lấy Access Token** trước — token sẽ tự động lưu vào biến `access_token` qua test script.\n3. Các API còn lại tự động dùng Bearer token từ biến môi trường (token sống 8 giờ).\n\n_Reference: OpenSync Data Synchronization API Guide — ASC SCHOOL._",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"item": [
+		{
+			"name": "0. Lấy Access Token (OAuth2 Client Credentials)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// Auto-save access_token vào environment để các request sau dùng",
+							"pm.test('Status code is 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"const json = pm.response.json();",
+							"if (json && json.success && json.access_token) {",
+							"    pm.environment.set('access_token', json.access_token);",
+							"    if (json.expires_at) {",
+							"        pm.environment.set('access_token_expires_at', json.expires_at);",
+							"    }",
+							"    console.log('✅ access_token đã lưu vào environment. Hết hạn:', json.expires_at);",
+							"} else {",
+							"    console.log('❌ Không lấy được token. Response:', JSON.stringify(json));",
+							"}"
+						]
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "username",
+							"value": "{{client_id}}",
+							"type": "string"
+						},
+						{
+							"key": "password",
+							"value": "{{client_secret}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"grant_type\": \"client_credentials\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{Base_URL}}/api/opensync/token",
+					"host": [
+						"{{Base_URL}}"
+					],
+					"path": [
+						"api",
+						"opensync",
+						"token"
+					]
+				},
+				"description": "OAuth 2.0 Client Credentials grant.\n\n- Header `Authorization: Basic base64(client_id:client_secret)` — Postman tự sinh từ Basic Auth.\n- Body bắt buộc: `{\"grant_type\": \"client_credentials\"}`.\n- Token sống **8 giờ** — nên cache, không lấy mới mỗi request.\n\nResponse:\n```json\n{\n  \"success\": true,\n  \"access_token\": \"eyJhbGci...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 28800,\n  \"expires_at\": \"2026-04-01T23:00:00\"\n}\n```"
+			},
+			"response": []
+		},
+		{
+			"name": "API 1 - Học sinh (thongtinhocsinh)",
+			"item": [
+				{
+					"name": "Danh sách học sinh (phân trang)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtinhocsinh?ma_truong={{ma_truong}}&ma_nien={{ma_nien}}&page=1&page_size=100",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtinhocsinh"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}",
+									"description": "Bắt buộc — mã trường"
+								},
+								{
+									"key": "ma_nien",
+									"value": "{{ma_nien}}",
+									"description": "Bắt buộc — mã niên học (vd: 2025-2026)"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Trang hiện tại (mặc định 1)"
+								},
+								{
+									"key": "page_size",
+									"value": "100",
+									"description": "Số record/trang (mặc định 1000, tối đa 5000)"
+								}
+							]
+						},
+						"description": "**API Code:** `opensync.hocsinh`\n\nLấy danh sách học sinh đã được xếp lớp trong niên học.\n\nResponse item:\n```json\n{\n  \"HoDem\": \"Nguyễn Văn\",\n  \"Ten\": \"An\",\n  \"HoTen\": \"Nguyễn Văn An\",\n  \"NgaySinh\": \"2012-03-15T00:00:00\",\n  \"GioiTinh\": true,\n  \"SoDinhDanhCaNhan\": \"058211004708\",\n  \"MaTruong\": \"79123456\",\n  \"TenTruong\": \"Trường Tiểu học An Lạc\",\n  \"MaKhoi\": \"KL01\",\n  \"MaLopHoc\": \"1A\",\n  \"TenLopHoc\": \"Lớp 1A\",\n  \"MaNien\": \"2025-2026\"\n}\n```\n\n> `GioiTinh`: true = Nam, false = Nữ. Học sinh chưa xếp lớp KHÔNG xuất hiện."
+					},
+					"response": []
+				},
+				{
+					"name": "Tìm 1 học sinh theo SoDinhDanhCaNhan",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtinhocsinh?ma_truong={{ma_truong}}&ma_nien={{ma_nien}}&SoDinhDanhCaNhan={{SoDinhDanhCaNhan}}",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtinhocsinh"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}"
+								},
+								{
+									"key": "ma_nien",
+									"value": "{{ma_nien}}"
+								},
+								{
+									"key": "SoDinhDanhCaNhan",
+									"value": "{{SoDinhDanhCaNhan}}",
+									"description": "Số định danh cá nhân của học sinh"
+								}
+							]
+						},
+						"description": "Lọc 1 học sinh theo `SoDinhDanhCaNhan`."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "API 2 - Giáo viên / Nhân sự (thongtingiaovien)",
+			"item": [
+				{
+					"name": "Danh sách giáo viên / nhân sự",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtingiaovien?ma_truong={{ma_truong}}&page=1&page_size=50",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtingiaovien"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}",
+									"description": "Bắt buộc"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "50"
+								}
+							]
+						},
+						"description": "**API Code:** `opensync.giaovien`\n\nKhông cần `ma_nien` — nhân sự không phân theo niên học.\n\nResponse item:\n```json\n{\n  \"HoDem\": \"Trần Thị\",\n  \"Ten\": \"Bình\",\n  \"HoTen\": \"Trần Thị Bình\",\n  \"NgaySinh\": \"1985-07-20T00:00:00\",\n  \"GioiTinh\": false,\n  \"SoDinhDanhCaNhan\": \"079185012345\",\n  \"Email\": \"tbbinh@school.edu.vn\",\n  \"MaLoaiNhanSu\": \"GV\",\n  \"LoaiNhanSu\": \"Giáo viên\",\n  \"MaTruong\": \"79123456\",\n  \"TenTruong\": \"Trường Tiểu học An Lạc\",\n  \"TrangThai\": \"Hoạt động\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Tìm 1 giáo viên theo SoDinhDanhCaNhan",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtingiaovien?ma_truong={{ma_truong}}&SoDinhDanhCaNhan={{SoDinhDanhCaNhan}}",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtingiaovien"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}"
+								},
+								{
+									"key": "SoDinhDanhCaNhan",
+									"value": "{{SoDinhDanhCaNhan}}",
+									"description": "CCCD / số định danh nhân sự"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "API 3 - Khối lớp (thongtinkhoilop)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{Base_URL}}/api/opensync/thongtinkhoilop?ma_truong={{ma_truong}}",
+					"host": [
+						"{{Base_URL}}"
+					],
+					"path": [
+						"api",
+						"opensync",
+						"thongtinkhoilop"
+					],
+					"query": [
+						{
+							"key": "ma_truong",
+							"value": "{{ma_truong}}",
+							"description": "Bắt buộc"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"disabled": true
+						},
+						{
+							"key": "page_size",
+							"value": "1000",
+							"disabled": true
+						}
+					]
+				},
+				"description": "**API Code:** `opensync.khoilop`\n\nResponse item:\n```json\n{\n  \"MaKhoiLop\": \"K1\",\n  \"TenKhoiLop\": \"Khối 1\"\n}\n```"
+			},
+			"response": []
+		},
+		{
+			"name": "API 4 - Lớp học (thongtinlophoc)",
+			"item": [
+				{
+					"name": "Tất cả lớp học theo niên",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtinlophoc?ma_truong={{ma_truong}}&ma_nien={{ma_nien}}",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtinlophoc"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}",
+									"description": "Bắt buộc"
+								},
+								{
+									"key": "ma_nien",
+									"value": "{{ma_nien}}",
+									"description": "Bắt buộc"
+								}
+							]
+						},
+						"description": "**API Code:** `opensync.lophoc`\n\nResponse item:\n```json\n{\n  \"MaKhoi\": \"KL01\",\n  \"MaLopHoc\": \"1A\",\n  \"TenLopHoc\": \"Lớp 1A\"\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Lọc lớp theo khối (ma_khoi)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{Base_URL}}/api/opensync/thongtinlophoc?ma_truong={{ma_truong}}&ma_nien={{ma_nien}}&ma_khoi={{ma_khoi}}",
+							"host": [
+								"{{Base_URL}}"
+							],
+							"path": [
+								"api",
+								"opensync",
+								"thongtinlophoc"
+							],
+							"query": [
+								{
+									"key": "ma_truong",
+									"value": "{{ma_truong}}"
+								},
+								{
+									"key": "ma_nien",
+									"value": "{{ma_nien}}"
+								},
+								{
+									"key": "ma_khoi",
+									"value": "{{ma_khoi}}",
+									"description": "Tùy chọn — vd: K1"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "API 5 - Niên học (thongtinnienhoc)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{Base_URL}}/api/opensync/thongtinnienhoc",
+					"host": [
+						"{{Base_URL}}"
+					],
+					"path": [
+						"api",
+						"opensync",
+						"thongtinnienhoc"
+					]
+				},
+				"description": "**API Code:** `opensync.nienhoc`\n\nKhông cần tham số. Trả về toàn bộ niên học.\n\nResponse item:\n```json\n{\n  \"MaNienHoc\": \"NH2025\",\n  \"TenNienHoc\": \"Năm học 2025-2026\"\n}\n```\n\n> Gọi API này trước, lấy `MaNienHoc` làm `ma_nien` cho các API khác."
+			},
+			"response": []
+		},
+		{
+			"name": "API 6 - Phân công giảng dạy (phanconggiangday)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{Base_URL}}/api/opensync/phanconggiangday?ma_truong={{ma_truong}}&ma_nien={{ma_nien}}&SoDinhDanhCaNhan={{SoDinhDanhCaNhan}}",
+					"host": [
+						"{{Base_URL}}"
+					],
+					"path": [
+						"api",
+						"opensync",
+						"phanconggiangday"
+					],
+					"query": [
+						{
+							"key": "ma_truong",
+							"value": "{{ma_truong}}",
+							"description": "Bắt buộc"
+						},
+						{
+							"key": "ma_nien",
+							"value": "{{ma_nien}}",
+							"description": "Bắt buộc"
+						},
+						{
+							"key": "SoDinhDanhCaNhan",
+							"value": "{{SoDinhDanhCaNhan}}",
+							"description": "Bắt buộc — CCCD giáo viên"
+						}
+					]
+				},
+				"description": "**API Code:** `opensync.phancong` (lưu ý: tài liệu liệt kê `opensync.phanconggiangday` ở bảng nhưng phần API ghi `opensync.phancong` — cần xác nhận lại với ASC SCHOOL).\n\nResponse item:\n```json\n{\n  \"HoDem\": \"Nguyễn Văn\",\n  \"Ten\": \"A\",\n  \"HoTen\": \"Nguyễn Văn A\",\n  \"SoDinhDanhCaNhan\": \"0334567743234\",\n  \"ChuNhiem\": {\n    \"MaKhoi\": \"KL06\",\n    \"MaLopHoc\": \"6A\",\n    \"TenLopHoc\": \"6B\"\n  },\n  \"PhanCongMonHocHK1\": [\n    { \"HocKy\": 1, \"TenHocKy\": \"Học kỳ 1\", \"MaMonHoc\": \"22\", \"TenMonHoc\": \"Tiếng Anh\", \"MaKhoi\": \"KL06\", \"MaLopHoc\": \"6A\", \"TenLopHoc\": \"6B\" }\n  ],\n  \"PhanCongMonHocHK2\": [\n    { \"HocKy\": 2, \"TenHocKy\": \"Học kỳ 2\", \"MaMonHoc\": \"22\", \"TenMonHoc\": \"Tiếng Anh\", \"MaKhoi\": \"KL06\", \"MaLopHoc\": \"6A\", \"TenLopHoc\": \"6B\" }\n  ]\n}\n```"
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "Base_URL",
+			"value": "https://opensync.ascschool.example.com",
+			"type": "string"
+		}
+	]
+}
