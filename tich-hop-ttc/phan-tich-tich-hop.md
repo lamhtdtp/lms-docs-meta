@@ -46,7 +46,7 @@ UC-03 (cron full-sync)
 | Repo | Trách nhiệm liên quan TTC |
 |------|---------------------------|
 | `lms-sso` | Là **OAuth client** đối với TTC. Nhận callback, đổi code → token, verify JWT, set cookie/session, gọi `lms-api` để lookup/tạo user. Cũng host endpoint `/logout` → forward `endsession` về TTC. |
-| `lms-api` | Chứa: (a) bảng user và ánh xạ `ttc_sub`/`so_dinh_danh_ca_nhan`; (b) **OpenSync client** (token cache + 6 API call); (c) job scheduler full-sync; (d) entity Học sinh/Giáo viên/Lớp/Niên học/Phân công với cờ `source = TTC_OPENSYNC`. |
+| `lms-api` | Chứa: (a) bảng user và ánh xạ `ttc_sub`/`so_dinh_danh_ca_nhan`; (b) **OpenSync client** (token cache + 6 API call); (c) job scheduler full-sync; (d) entity Học sinh/Giáo viên/Lớp/Niên học/Phân công với cờ `source = TTC_OPENSYNC`. Chi tiết map field OpenSync → entity LMS và các bước triển khai: **`huong-dan-mapping-opensync-lms-api.md`**. |
 | `lms-fe` (PH/HS) | Có nút "Đăng nhập bằng TTC" → redirect tới `lms-sso`. |
 | `lms-school` (GV/Admin) | Tương tự `lms-fe`. **Thêm** trang admin để: trigger sync thủ công, xem báo cáo sync, map ánh xạ thủ công khi conflict. |
 
