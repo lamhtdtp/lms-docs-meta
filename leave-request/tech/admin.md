@@ -27,7 +27,7 @@ Trạng thái hiện tại: module leave request chưa có trong API — build e
 ### Dùng chung entity, duyệt & điểm danh
 
 - Thực thể, trường `branch_id` / `classroom_id`, `status`, `reviewed_by`, `reject_reason`, … — thống nhất `xin-nghỉ-phép/tech/parent.md` và `xin-nghỉ-phép/tech/teacher.md`.
-- Logic sau **Đồng ý** / **Từ chối** (cập nhật đơn + đồng bộ `EXCUSED_ABSENCE` + nguồn `LEAVE_REQUEST` khi `APPROVED`) — giống luồng GVCN; tái sử dụng **cùng service** `LeaveRequestService.review(...)` để tránh lệch BR.
+- Logic sau **Đồng ý** / **Từ chối** (cập nhật đơn + đồng bộ `EXCUSED_ABSENCE` + nguồn `LEAVE_REQUEST` khi `APPROVED`) — giống luồng GVCN; tái sử dụng **cùng service** `LeaveRequestService.review(...)` (sync in-tx, sau đó gọi `LeaveAttendanceSyncService.applyApprovedLeaves`) để tránh lệch BR. Slot tương lai defer; MANUAL mới hơn được giữ (NG-05). Chi tiết: **[`implementation-attendance-sync.md`](./implementation-attendance-sync.md)**.
 
 ### Phân quyền Admin vs GVCN
 

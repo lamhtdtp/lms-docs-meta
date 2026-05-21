@@ -1,49 +1,61 @@
 ---
 name: tich-hop-ttc-sso-opensync
 description: >-
-  Áp dụng hướng dẫn tích hợp đối tác TTC (ASC SCHOOL) vào LMS — hai luồng tách
-  rời: (1) SSO đăng nhập một lần theo OAuth 2.0 Authorization Code + OIDC
-  (claim sub/user_type/scope/jti/exp), (2) OpenSync API đồng bộ máy-máy theo
-  OAuth 2.0 Client Credentials (học sinh, giáo viên/nhân sự, khối lớp, lớp
-  học, niên học, phân công giảng dạy). Dùng khi thiết kế/triển khai/review
-  việc đăng nhập SSO qua TTC, đồng bộ học sinh/giáo viên từ TTC sang LMS, map
-  user_type → role LMS, cache token, xử lý phân trang/lỗi 401/403, hoặc khi
-  user nhắc TTC, ASC SCHOOL, OpenSync, opensync.hocsinh, opensync.giaovien,
-  ma_truong, ma_nien, SoDinhDanhCaNhan, thongtinhocsinh, thongtingiaovien,
-  RP-Initiated Logout, /oauth/authorize, /api/oauth/token, /api/opensync/token.
+  Áp dụng hướng dẫn tích hợp đối tác TTC (ASC SCHOOL) vào LMS — BA luồng tách
+  rời: (1) TTC SSO cho PH/HS theo OAuth 2.0 Authorization Code + OIDC (claim
+  sub/user_type/scope/jti/exp); (2) Office 365 / Microsoft Entra ID SSO RIÊNG
+  cho GV (TTC tách riêng phần đăng nhập GV) — claim oid/tid/email/upn; (3)
+  OpenSync API đồng bộ máy-máy theo OAuth 2.0 Client Credentials (học sinh,
+  giáo viên/nhân sự, khối lớp, lớp học, niên học, phân công giảng dạy). Dùng
+  khi thiết kế/triển khai/review việc đăng nhập SSO qua TTC hoặc qua O365,
+  đồng bộ học sinh/giáo viên từ TTC sang LMS, map user_type → role LMS, bridge
+  GV (O365 oid) ↔ OpenSync (SoDinhDanhCaNhan), cache token, xử lý phân
+  trang/lỗi 401/403, hoặc khi user nhắc TTC, ASC SCHOOL, OpenSync, Office 365,
+  Microsoft Entra, Azure AD, opensync.hocsinh, opensync.giaovien, ma_truong,
+  ma_nien, SoDinhDanhCaNhan, thongtinhocsinh, thongtingiaovien, RP-Initiated
+  Logout, /oauth/authorize, /api/oauth/token, /api/opensync/token,
+  /oauth2/v2.0/authorize, login.microsoftonline.com.
 ---
 
-# TTC (ASC SCHOOL) — SSO + OpenSync API
+# TTC (ASC SCHOOL) — SSO (TTC + O365) + OpenSync API
 
 Nguồn chuẩn:
-- `tich-hop-ttc/HuongDan_SSO_DoiTac.docx` — luồng SSO Authorization Code (OIDC).
+- `tich-hop-ttc/HuongDan_SSO_DoiTac.docx` — luồng SSO Authorization Code (OIDC) cho PH/HS.
 - `tich-hop-ttc/HuongDan_OpenSyncAPI_DoiTac.docx` — đồng bộ data học sinh / giáo viên / khối lớp / lớp / niên học / phân công.
+- (Không có DOC riêng) — Office 365 SSO cho GV: dùng chuẩn Microsoft Entra ID OIDC; cấu hình do TTC IT cấp.
 
-**Hai luồng tách biệt — KHÔNG dùng chung:**
+**BA luồng tách biệt — KHÔNG dùng chung:**
 
-| Luồng | Mục đích | Grant type | Có user click? | Token sống |
-|-------|----------|-----------|----------------|------------|
-| SSO | Đăng nhập người dùng | `authorization_code` | ✅ (mở browser) | 1h (3600s) |
-| OpenSync | Đồng bộ data máy-máy (M2M) | `client_credentials` | ❌ (server-to-server) | 8h (28800s) |
+| Luồng | Mục đích | IdP | Actor | Grant type | Có user click? | Token sống |
+|-------|----------|-----|-------|-----------|----------------|------------|
+| **TTC SSO** (UC-01a) | Đăng nhập PH/HS | TTC OAuth | PH, HS | `authorization_code` | ✅ (mở browser) | 1h (3600s) |
+| **O365 SSO** (UC-01b) | Đăng nhập GV | Microsoft Entra ID (Azure AD) | GV | `authorization_code` | ✅ (mở browser) | 1h (default Entra) |
+| **OpenSync** | Đồng bộ data máy-máy (M2M) | TTC OAuth | (server) | `client_credentials` | ❌ (server-to-server) | 8h (28800s) |
 
-> ⚠️ **Không nhập** giá trị TTC cấp (Client ID/Secret/Redirect URI/API Codes/`ma_truong`/`ma_nien`) vào source — phải đọc từ env / KMS.
+> ⚠️ **GV KHÔNG đăng nhập qua TTC SSO** — TTC tách riêng phần này sang O365. Nếu nhận `user_type=1` từ TTC SSO → REJECT với message "Giáo viên vui lòng đăng nhập qua Office 365" (chống tạo trùng record).
+>
+> ⚠️ **Không nhập** giá trị TTC/O365 cấp (Client ID/Secret/Redirect URI/Tenant ID/API Codes/`ma_truong`/`ma_nien`) vào source — phải đọc từ env / KMS.
 
 ## Mục tiêu khi dùng skill
 
-- Nhất quán cách xác thực, cấu trúc claim/JSON, và cách xử lý lỗi giữa hai luồng.
-- Map đúng `user_type` (SSO) ↔ `MaLoaiNhanSu` / xếp lớp HS (OpenSync) ↔ vai trò trong LMS.
+- Nhất quán cách xác thực, cấu trúc claim/JSON, và cách xử lý lỗi giữa ba luồng.
+- Map đúng nguồn xác thực (TTC SSO / O365 SSO) ↔ `MaLoaiNhanSu` / xếp lớp HS (OpenSync) ↔ vai trò trong LMS.
 - Cache token đúng vòng đời, không gọi token endpoint mỗi request.
-- Truy vết người dùng bằng định danh **bền vững** (OIDC `sub` cho SSO; `SoDinhDanhCaNhan` cho OpenSync).
+- Truy vết người dùng bằng định danh **bền vững**:
+  - PH/HS: OIDC `sub` (TTC) ↔ `SoDinhDanhCaNhan` (OpenSync).
+  - GV: `oid`+`tid` (Entra) ↔ `Email` hoặc `employeeId` claim (OpenSync).
 
 ## Phạm vi
 
-**Bao gồm:** SSO đăng nhập, đăng xuất RP-Initiated; lấy + cache OpenSync token; gọi 6 API OpenSync; map record TTC → entity LMS; xử lý lỗi 400/401/403 và `success:false`.
+**Bao gồm:** TTC SSO đăng nhập PH/HS, đăng xuất RP-Initiated TTC; O365 SSO đăng nhập GV qua Microsoft Entra ID, đăng xuất Microsoft logout; lấy + cache OpenSync token; gọi 6 API OpenSync; map record TTC → entity LMS; xử lý lỗi 400/401/403 và `success:false`; bridge GV (Entra `oid`) ↔ OpenSync `thongtingiaovien` (`SoDinhDanhCaNhan`/`Email`).
 
-**Không bao gồm:** chỉnh sửa data ngược về TTC (OpenSync **chỉ đọc**); push notification từ TTC; tính phí/lương; logic nội bộ của TTC.
+**Không bao gồm:** chỉnh sửa data ngược về TTC (OpenSync **chỉ đọc**); push notification từ TTC; tính phí/lương; logic nội bộ của TTC; cấu hình App Registration trên Entra (do TTC IT làm); Microsoft Graph API ngoài `User.Read`.
 
 ---
 
-## 1. SSO — OAuth 2.0 Authorization Code + OIDC
+## 1. TTC SSO (PH/HS) — OAuth 2.0 Authorization Code + OIDC
+
+> **Áp dụng:** Phụ huynh (`user_type=4`), Học sinh (`user_type=6`). **GV (`user_type=1`) → REJECT** ở callback, hướng dẫn user dùng O365 (xem §1b).
 
 ### Endpoint
 
@@ -103,6 +115,110 @@ Callback: `…/callback?code=<AUTHORIZATION_CODE>&state=<YOUR_STATE>`.
 - Verify `exp` trước khi tin token; verify `iss` = TTC issuer.
 - Mọi giao tiếp HTTPS.
 - Khi secret lộ: TTC cấp lại; secret cũ còn hiệu lực **24h** để rolling cấu hình.
+
+---
+
+## 1b. Office 365 SSO (GV) — Microsoft Entra ID + OIDC
+
+> **Áp dụng:** Giáo viên / nhân sự. TTC tách riêng phần đăng nhập GV bằng O365 — KHÔNG đi qua TTC SSO. Chi tiết kiến trúc, sequence, bridge: **`tich-hop-ttc/phan-tich-tich-hop.md` §3b** + **`tich-hop-ttc/tech/sso-o365-implement.md`**.
+
+### Endpoint (Microsoft Entra)
+
+| Mục đích | Method | URL |
+|---------|--------|-----|
+| Discovery | `GET` | `https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration` |
+| Authorize | `GET` | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` |
+| Token | `POST` | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token` |
+| JWKS | `GET` | `https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys` |
+| Logout | `GET` | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout` |
+
+> Gọi discovery 1 lần lúc start service + cache 24h. KHÔNG hard-code endpoint.
+
+### Tham số `/oauth2/v2.0/authorize`
+
+| Tham số | Bắt buộc | Ghi chú |
+|---------|:--------:|---------|
+| `client_id` | ✅ | TTC IT cấp khi tạo App Registration |
+| `response_type` | ✅ | `code` |
+| `redirect_uri` | ✅ | Khớp tuyệt đối URI đã đăng ký trên Entra |
+| `scope` | ✅ | Tối thiểu `openid profile email`. Thêm `offline_access` nếu cần `refresh_token`. Thêm `User.Read` nếu cần Graph |
+| `state` | nên có | Random ≥16 byte — chống CSRF |
+| `response_mode` | tuỳ chọn | `query` (default) hoặc `form_post` |
+| `prompt` | tuỳ chọn | `select_account` để Entra hiện chooser kể cả khi đã login |
+
+### Đổi code lấy token (`POST /oauth2/v2.0/token`)
+
+- `Content-Type: application/x-www-form-urlencoded`
+- Body: `grant_type=authorization_code`, `code`, `client_id`, `client_secret`, `redirect_uri`, `scope` (giống lúc authorize)
+- Response: `{ access_token, id_token, token_type:"Bearer", expires_in, refresh_token?, scope }`
+
+> **id_token** mới là JWT chứa user claim — verify qua JWKS. **access_token** là JWT của Microsoft Graph (nếu request `User.Read`), KHÔNG verify để lấy claim user.
+
+### JWT id_token — claim chuẩn
+
+| Claim | Có khi | Ý nghĩa |
+|-------|--------|---------|
+| `oid` | luôn | **Object ID** trong tenant — định danh bền vững GV; khoá lookup chính (`user.o365_oid`) |
+| `tid` | luôn | Tenant ID — verify cứng = `O365_TENANT_ID` env |
+| `sub` | luôn | Per-app pairwise — KHÔNG dùng làm khoá ngoại (đổi App = đổi `sub`) |
+| `aud` | luôn | Phải khớp `O365_CLIENT_ID` |
+| `iss` | luôn | `https://login.microsoftonline.com/{tid}/v2.0` — verify cứng |
+| `exp` / `iat` / `nbf` | luôn | Thời gian token |
+| `email` | scope `email` (thường có) | Bridge với `thongtingiaovien.Email` |
+| `upn` | thường | User Principal Name (vd `gv001@truongttc.edu.vn`) |
+| `preferred_username` | thường | Thường là email — fallback nếu thiếu `email` |
+| `name` | scope `profile` | Họ tên đầy đủ |
+| `given_name` / `family_name` | scope `profile` | Tên / Họ |
+| `employeeId` | optional claim (TTC bật trong Token configuration) | **Bridge tốt nhất** với OpenSync `SoDinhDanhCaNhan` |
+| `extension_*` | nếu HR đẩy CCCD vào extensionAttribute | Thay thế cho `employeeId` |
+
+### RP-Initiated Logout O365
+
+`GET /oauth2/v2.0/logout?post_logout_redirect_uri=…&id_token_hint=<id_token>&state=…`
+
+Sau callback: clear session/cookie LMS, verify `state`, redirect về `/sign-in`.
+
+### Bridge GV (O365) ↔ OpenSync (`thongtingiaovien`)
+
+Token Entra **không có** `SoDinhDanhCaNhan`. Resolver theo thứ tự:
+
+1. `users.find(o365_oid=oid, o365_tid=tid)` → nếu có → trả về (login lần 2+).
+2. Nếu có claim `employeeId` → `giao_vien.find(so_dinh_danh=employeeId)` → match → upsert `o365_oid`/`o365_tid` → trả về.
+3. Nếu có `email` → `giao_vien.find(email__iexact=email, source='TTC_OPENSYNC')` → match → upsert → trả về.
+4. Không match → ghi `pending_o365_users`, REJECT 403, hiển thị "Tài khoản chưa được đồng bộ vào LMS — liên hệ admin".
+
+> ⚠️ **KHÔNG JIT cho GV** — phải pre-provision qua UC-03 (cron OpenSync) trước. Nếu cho JIT → ai có email O365 thuộc tenant TTC đều thành GV trong LMS.
+
+### Cấu hình bắt buộc
+
+| Env | Nguồn | Ghi chú |
+|-----|-------|---------|
+| `O365_TENANT_ID` | TTC IT | GUID tenant Microsoft Entra của TTC |
+| `O365_CLIENT_ID` | TTC IT | Application ID của App Registration |
+| `O365_CLIENT_SECRET` | TTC IT (Vault) | Mặc định Entra hết hạn 24 tháng — rotate lịch |
+| `O365_REDIRECT_URI` | LMS đăng ký | Vd `https://lms-sso.dtp.vn/o365-sso/callback` |
+| `O365_SCOPES` | LMS config | `openid profile email` (+`offline_access` nếu cần) |
+
+### Mã lỗi cốt lõi (Entra)
+
+| Code Entra | Nghĩa | Hành động |
+|------------|-------|-----------|
+| `AADSTS50011` | Redirect URI mismatch | Check khớp tuyệt đối URI đăng ký |
+| `AADSTS65001` | Admin consent chưa bấm | Yêu cầu TTC IT bấm consent |
+| `AADSTS70001` | App not found / disabled | TTC IT enable lại App Registration |
+| `AADSTS7000215` | Invalid client secret | Secret hết hạn hoặc sai → rotate |
+| `AADSTS50105` | User chưa được assign vào app | TTC IT assign user/group |
+| `AADSTS500133` | Token hết hạn | Refresh hoặc redirect login lại |
+
+### Bảo mật O365 SSO
+
+- `client_secret` từ env / Vault; **không** commit.
+- Verify `id_token` qua JWKS (signature + `iss` + `aud` + `exp` + `tid`).
+- **Lock tenant**: verify `tid` claim = `O365_TENANT_ID` env (chống cross-tenant attack).
+- Verify `state` khớp request.
+- Mọi giao tiếp HTTPS.
+- KHÔNG log nội dung `id_token` / `access_token` / `refresh_token`.
+- Lên lịch alert trước expiry của `client_secret` 30 ngày.
 
 ---
 
@@ -184,44 +300,64 @@ Callback: `…/callback?code=<AUTHORIZATION_CODE>&state=<YOUR_STATE>`.
 
 ---
 
-## 3. Định danh người dùng — bridge giữa SSO và OpenSync
+## 3. Định danh người dùng — bridge giữa các SSO và OpenSync
 
 | Hệ | Định danh chính | Bền vững? | Có sẵn ở đâu |
 |----|-----------------|----------|---------------|
-| SSO (OIDC) | `sub` | ✅ ổn định, không đổi khi đổi tên | JWT |
-| SSO (scope `identity`) | `identity` | ✅ trùng `SoDinhDanhCaNhan` | JWT (chỉ khi cấp scope) |
+| TTC SSO (OIDC) | `sub` | ✅ ổn định, không đổi khi đổi tên | JWT TTC |
+| TTC SSO (scope `identity`) | `identity` | ✅ trùng `SoDinhDanhCaNhan` | JWT TTC (chỉ khi cấp scope) |
+| **O365 SSO (Entra)** | **`oid` + `tid`** | **✅ ổn định trong tenant** | **id_token** |
+| **O365 SSO (optional claim)** | **`employeeId`** | **✅ trùng `SoDinhDanhCaNhan`** | **id_token (chỉ khi TTC bật trong Token configuration)** |
 | OpenSync | `SoDinhDanhCaNhan` | ✅ CCCD/CMND (số định danh cá nhân) | Mọi record |
+| OpenSync (`thongtingiaovien`) | `Email` | ⚠️ tuỳ data sạch | Bridge phụ với O365 `email` |
 
-**Khuyến nghị:** Lưu **cả hai** trong LMS user record:
-- `ttc_sub` (unique, từ SSO `sub`) — khoá lookup khi login.
+**Khuyến nghị:** Lưu **các** trong LMS user record:
+- `ttc_sub` (unique, từ TTC SSO `sub`) — khoá lookup khi PH/HS login.
+- `o365_oid` + `o365_tid` (unique pair, từ Entra) — khoá lookup khi GV login.
 - `so_dinh_danh_ca_nhan` (unique theo `MaTruong`) — khoá lookup khi đồng bộ OpenSync.
+- `email` — fallback bridge với GV (O365 ↔ `thongtingiaovien.Email`).
 
-Cách bridge `sub` ↔ `SoDinhDanhCaNhan`:
-- Cấp scope `identity` cho client → JWT có claim `identity` = `SoDinhDanhCaNhan` → match thẳng record OpenSync;
-- HOẶC để TTC tài liệu hoá quy ước `sub` (ví dụ `sub` chính là PK của TTC) → hỏi TTC cách join (có thể cần API thứ 7 để map `sub` → CCCD).
+Cách bridge:
+- **PH/HS**: cấp scope `identity` cho TTC SSO client → claim `identity` = `SoDinhDanhCaNhan` → match thẳng record OpenSync.
+- **GV**: ưu tiên (1) optional claim `employeeId` từ Entra; (2) fallback `email` Entra ↔ `thongtingiaovien.Email`; (3) fallback admin map qua bảng `pending_o365_users`.
 
 ---
 
-## 4. Map `user_type` (SSO) ↔ `MaLoaiNhanSu` (OpenSync) ↔ Role LMS
+## 4. Map nguồn xác thực ↔ vai trò LMS
 
-| SSO `user_type` | OpenSync nguồn | Role LMS đề xuất |
-|-----------------|----------------|-------------------|
-| `1` Giáo viên / cán bộ | `thongtingiaovien` (`MaLoaiNhanSu` = `GV`/khác) | `TEACHER` (HEAD nếu là chủ nhiệm trong `phanconggiangday.ChuNhiem`) hoặc `STAFF` |
-| `4` Phụ huynh | (không có endpoint riêng — phụ huynh chưa nằm trong 6 API) | `PARENT` — provisioning JIT khi SSO |
-| `6` Học sinh | `thongtinhocsinh` | `STUDENT` |
+| Nguồn xác thực | Khoá định danh | OpenSync nguồn | Role LMS đề xuất | Provisioning |
+|----------------|----------------|----------------|-------------------|--------------|
+| **O365 SSO (UC-01b)** — GV | `o365_oid`+`o365_tid` | `thongtingiaovien` (`MaLoaiNhanSu`=`GV`) | `TEACHER` (HEAD nếu chủ nhiệm trong `phanconggiangday.ChuNhiem`) | **Strict pre-provision** |
+| **O365 SSO (UC-01b)** — Cán bộ | `o365_oid`+`o365_tid` | `thongtingiaovien` (`MaLoaiNhanSu`≠`GV`) | `STAFF` / `ADMIN` | Strict |
+| **TTC SSO (UC-01a)** `user_type=4` | `ttc_sub` | (không có endpoint PH) | `PARENT` | **JIT** |
+| **TTC SSO (UC-01a)** `user_type=6` | `ttc_sub` + `identity` | `thongtinhocsinh` | `STUDENT` | Pre-provision (ưu tiên), JIT fallback |
+| **TTC SSO (UC-01a)** `user_type=1` | — | — | **REJECT** — phải dùng O365 | n/a |
 
 > Phụ huynh chỉ có ở SSO; OpenSync **không** trả PH → không thể full-sync trước. Phải JIT khi PH login lần đầu.
+> Giáo viên KHÔNG đi qua TTC SSO; nếu nhận `user_type=1` từ TTC → REJECT để tránh tạo trùng record.
 
 ---
 
 ## 5. Checklist nhanh cho agent (implement / review)
 
-### SSO
+### TTC SSO (UC-01a — PH/HS)
 - [ ] `redirect_uri` trong code **trùng tuyệt đối** URI đã đăng ký với TTC (kể cả trailing slash).
 - [ ] Sinh `state` ngẫu nhiên (≥ 16 byte entropy), verify ở callback.
-- [ ] Verify `exp` và `iss` trước khi tin payload JWT.
-- [ ] Sau logout: clear cookie/session LMS + redirect `post_logout_redirect_uri`.
-- [ ] Map `user_type` đúng role LMS; **không** rộng quyền hơn cần thiết.
+- [ ] Verify `exp` và `iss` trước khi tin payload JWT TTC.
+- [ ] Sau logout: clear cookie/session LMS + redirect `endsession`.
+- [ ] Map `user_type` đúng role LMS; `user_type=1` (GV) → **REJECT** với message "đăng nhập qua O365".
+- [ ] **Không** rộng quyền hơn cần thiết.
+
+### O365 SSO (UC-01b — GV)
+- [ ] `redirect_uri` khớp tuyệt đối URI đã đăng ký trên Entra App Registration.
+- [ ] Sinh `state` ngẫu nhiên ≥16 byte, verify ở callback.
+- [ ] Verify `id_token` qua **JWKS** (signature + `iss` + `aud` + `exp`).
+- [ ] **Lock tenant**: verify `tid` claim = `O365_TENANT_ID` env.
+- [ ] Resolver theo thứ tự: `o365_oid` → `employeeId` → `email` → `pending_o365_users`.
+- [ ] **KHÔNG JIT** cho GV — REJECT 403 nếu không match.
+- [ ] Sau logout: clear cookie LMS + redirect `https://login.microsoftonline.com/{tid}/oauth2/v2.0/logout`.
+- [ ] Cache discovery 24h; KHÔNG hard-code endpoint Microsoft.
+- [ ] Alert lịch trước expiry `O365_CLIENT_SECRET` 30 ngày.
 
 ### OpenSync
 - [ ] Cache token theo `expires_at` (refresh sớm 5–10 phút trước hết hạn).
@@ -231,12 +367,14 @@ Cách bridge `sub` ↔ `SoDinhDanhCaNhan`:
 - [ ] HTTP 403 → là vấn đề **API Code** (cấp quyền), không phải token; alert ops thay vì refresh token.
 - [ ] `200 + success:false` → đọc `message`; không treat như 5xx.
 - [ ] Không log token; redact `Authorization` trong log middleware.
+- [ ] Đảm bảo `thongtingiaovien.Email` được sync đúng → bridge với O365 (UC-01b) hoạt động.
 
 ### Chung
-- [ ] `client_secret` từ env / Vault; trên prod dùng KMS.
-- [ ] Trên 24h sau khi đổi secret: verify secret cũ đã ngừng dùng (log endpoint token).
+- [ ] `client_secret` (TTC + O365) từ env / Vault; trên prod dùng KMS.
+- [ ] Sau khi đổi secret TTC: verify secret cũ đã ngừng dùng trong 24h (TTC giữ rolling window).
 - [ ] HTTPS bắt buộc.
-- [ ] Lưu `ttc_sub` + `so_dinh_danh_ca_nhan` trong user record để bridge hai luồng.
+- [ ] Lưu `ttc_sub` (PH/HS) + `o365_oid`+`o365_tid` (GV) + `so_dinh_danh_ca_nhan` + `email` trong user record để bridge ba luồng.
+- [ ] `lms-sso` thiết kế dạng broker đa-IdP với routing theo provider (`/ttc-sso/*`, `/o365-sso/*`).
 
 ## Kế hoạch dùng skill
 

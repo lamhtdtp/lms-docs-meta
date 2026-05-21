@@ -50,11 +50,12 @@ Vẫn là **ballpark**; chốt số cần backlog task + spike attendance.
 |------|----------|------------------------|--------|
 | **BE-A** | Nền leave | Entity, migration, repo, criteria, mapper, `GET/POST` PH, `GET` list/detail theo scope PH/HS/STUDENT | **10–18** |
 | **BE-B** | Review | `PUT`/`PATCH` duyệt; guard TEACHER=HEAD; guard ADMIN/SUPER_ADMIN + branch; batch một chi nhánh; validate `PENDING`, reject reason | **8–14** |
-| **BE-C** | Attendance | Sau `APPROVED`: map buổi→tiết, chỉ slot tồn tại, `EXCUSED_ABSENCE` + source `LEAVE_REQUEST`, không đè MANUAL mới hơn (theo SKILL) | **10–22** |
+| **BE-C** | Attendance (sync) | Sau `APPROVED`: map buổi→tiết, chỉ slot tồn tại ≤ today, `EXCUSED_ABSENCE` + source `LEAVE_REQUEST`, không đè MANUAL mới hơn, audit table riêng, sync in-tx, batch ≤ 50. Phase 1A (review trigger) ~3–5 md + Phase 1B (SD-03 reconcile khi thêm tiết quá khứ) ~2–3 md. Chi tiết `tech/implementation-attendance-sync.md`. | **5–8** |
 | **BE-D** | QA BE / fix | Overlap BR-LEAVE-05, khóa điểm (nếu bật), regression rollcall | **5–12** |
-| | **Tổng BE** | | **33–66 manday** |
+| | **Tổng BE** | | **28–52 manday** |
 
-*Nếu phase 1 **chỉ** duyệt đơn + cập nhật trạng thái **chưa** đụng attendance: trừ **BE-C** xuống ~**3–8** manday (nhưng **lệch FRS** — chỉ interim.)*
+*Đã chốt **sync in-transaction** + **defer slot tương lai** + **audit table riêng** + **batch ≤ 50** — scope rõ nên BE-C giảm so với ước lượng ban đầu (10–22 md khi còn bao gồm async + chưa chốt audit).*
+*Nếu chuyển sang **async + metric/alert** (Phase 2 sau pilot): cộng thêm ~3–6 md cho event listener + Micrometer + dashboard.*
 
 ### Frontend — `lms-fe` (PH + HS) — manday
 
@@ -84,10 +85,10 @@ Vẫn là **ballpark**; chốt số cần backlog task + spike attendance.
 
 | Cách đọc | Khoảng manday |
 |----------|----------------|
-| **BE** | **33–66** |
+| **BE** | **28–52** |
 | **FE** (`lms-fe` + `lms-school`) | **30–56** *(13–24 + 17–32)* |
 | **Buffer tích hợp / UAT** | **4–10** |
-| **Tổng (một dev full-stack tuần tự)** | **67–132 manday** |
+| **Tổng (một dev full-stack tuần tự)** | **62–118 manday** |
 
 So với **est1** (64–130 tổng): **trùng bậc**; est2 **tách rõ** BE attendance, **tách hai FE**, nên dùng est2 khi planning team có **2 repo FE**.
 

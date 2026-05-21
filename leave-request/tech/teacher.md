@@ -27,7 +27,7 @@ Trạng thái hiện tại: module leave request chưa có trong API — cần i
 ### Dùng chung entity & bảng leave request
 
 - Cấu trúc thực thể, trường `classroom_id`, `student_id`, `status`, … — thống nhất với `xin-nghỉ-phép/tech/parent.md`.
-- Khi **duyệt Đồng ý**: cập nhật `status = APPROVED`, `reviewed_by`, `reviewed_by_role_code`, `reviewed_at`; sau đó gọi tầng **điểm danh** (module `rollcall` hiện có `EAttendanceStatus.EXCUSED_ABSENCE`) theo **BR-ATT-16 … 20**, **BR-LEAVE-03**, nguồn `LEAVE_REQUEST`, chỉ trên slot/tiết **đang tồn tại** — chi tiết trong SKILL (`SD-01`, ma trận trạng thái).
+- Khi **duyệt Đồng ý**: cập nhật `status = APPROVED`, `reviewed_by`, `reviewed_by_role_code`, `reviewed_at`; sau đó **trong cùng transaction** gọi `LeaveAttendanceSyncService.applyApprovedLeaves(leaves, ctx)` (sync, không async). Service chỉ cập nhật slot ngày **≤ hôm nay**; slot ngày tương lai defer cho job auto / SD-03 reconcile. Tuân thủ **BR-ATT-16 … 20**, **BR-LEAVE-03**, **NG-05** (last-write-wins với MANUAL), nguồn `LEAVE_REQUEST`, ghi `attendance_audit`. Chi tiết kiến trúc + code skeleton: **[`implementation-attendance-sync.md`](./implementation-attendance-sync.md)**.
 - Khi **Từ chối**: `status = REJECTED`, lưu `reject_reason` (text); **không** gán tự động `UNEXCUSED_ABSENCE` vì đơn bị từ chối.
 
 ### Phân quyền GV — GVCN (ETeacherAllocation.HEAD)
